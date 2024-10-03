@@ -1,0 +1,111 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Update yum repositories
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Update DNF repositories
+      dnf:
+        name: "*"
+        state: latest
+
+    - name: Install required dependencies
+      dnf:
+        name:
+          - java-17-amazon-corretto.x86_64
+          - wget
+        state: present
+
+    - name: Add Jenkins repository
+      get_url:
+        url: https://pkg.jenkins.io/redhat/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+
+    - name: Import Jenkins GPG key
+      rpm_key:
+        state: present
+        key: https://pkg.jenkins.io/redhat/jenkins.io-2023.key
+
+    - name: Install Jenkins
+      dnf:
+        name: jenkins
+        state: present
+
+    - name: Start and enable Jenkins
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+
+    - name: Install unzip and wget
+      yum:
+        name:
+          - unzip
+          - wget
+        state: present
+
+    - name: Download SonarQube
+      get_url:
+        url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.1.69595.zip"
+        dest: /tmp/sonarqube.zip
+
+    - name: Extract SonarQube
+      unarchive:
+        src: /tmp/sonarqube.zip
+        dest: /opt/
+        remote_src: yes
+
+    - name: Create SonarQube user
+      user:
+        name: sonarqube
+        system: yes
+
+    - name: Change ownership of SonarQube directory
+      file:
+        path: /opt/sonarqube-9.9.1.69595
+        owner: sonarqube
+        group: sonarqube
+        state: directory
+        recurse: yes
+
+    - name: Set up SonarQube service
+      copy:
+        dest: /etc/systemd/system/sonarqube.service
+        content: |
+          [Unit]
+          Description=SonarQube service
+          After=syslog.target network.target
+
+          [Service]
+          Type=forking
+          ExecStart=/opt/sonarqube-9.9.1.69595/bin/linux-x86-64/sonar.sh start
+          ExecStop=/opt/sonarqube-9.9.1.69595/bin/linux-x86-64/sonar.sh stop
+          User=sonarqube
+          Group=sonarqube
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd and start SonarQube service
+      systemd:
+        daemon_reload: yes
+        name: sonarqube
+        enabled: yes
+        state: started
